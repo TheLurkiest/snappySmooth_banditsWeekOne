@@ -6,6 +6,7 @@
 
 -- poofNewHutZs() dripSpawnZs4Huts() dudeHereHutHomer() dudeZap1() slotVipSkinWalkerFn(npc, csvIndex) scanNpcNow() uDeadYet() spawnExactDude(npc_tab_in) spawnedGuyNamer(tab4_in)
 
+local savedKeyId = nil
 
 ------------------------------------------------------------------ +
 
@@ -19,180 +20,21 @@
     -- lower the cap, 
     -- and stop buildup before touching anything else.
 
--- Phase 2A — Building Registration: 
-    -- Make saveHutNow() 
-    -- create/update hutsCsv[keyId] cleanly, because every later zombie and NPC step depends on hut data existing and being trustworthy.
 
 
-local function saveHutNow()
+local function poofNewHutZs(keyId_in)
 
-    -- No that's not right, I'm 99% sure it's THIS that we used (pretty sure it worked real well) -- can you remind me what this would end up displaying ... I'm worried maybe this will only print out a handful of buildings on the map though, do I need to specify something broader or this all of them: 
+    -- Phase 2B — Zombie Tracking: Build zedsHere as the minimal way to tell “already around” zombies apart from “just popped from this new hut” zombies, and keep it dumb unless forced to get fancier later.
 
-    local hutsCsv = ModData.getOrCreate("hutsCsv")
-    local vipsCsv = ModData.getOrCreate("vipsCsv")
+    -- Phase 2C — New-Building Zombie Poof: 
+        -- Make poofNewHutZs() despawn only the fresh inside-hut zombies during the first short window and feed part of them into totZombiesLeft, because this is the first real anti-stupid-spawn step.
 
-    local zedsHere = ModData.getOrCreate("zedsHere")
 
-    for k, v in pairs(hutsCsv) do
-        print("Key:", k, "Value:", v)
-    end
+    savedKeyId = keyId_in
 
-    local savedKeyId = nil
 
-    local player = getPlayer(0)
 
-    local building = player:getBuilding()
-    local buildingDef
     local keyId
-
-    local foundHut = false
-
-    if building then
-        buildingDef = building:getDef()
-        keyId = buildingDef:getKeyId()
-
-
-        for j = 1, (#last10HutIds) do
-            if tonumber(keyId) == tonumber(last10HutIds[j]) then
-                foundHut = true
-                break
-            end
-        end
-
-        if foundHut == false then
-            table.insert(last10HutIds, keyId)
-        end
-
-
-        --------------------------------------------
-        
-
-        local ts = getTimestampMs()
-
-        local player = getSpecificPlayer(0)
-        local cell = player:getCell()
-        local px, py = player:getX(), player:getY()
-        local rooms = cell:getRoomList()
-
-        local occupantsCnt
-        local occupantsMax
-        local foundHut = false
-
-        -- the probability of spawn in a room will depend on room size and other factors
-        local cursor = 0
-        local roomPool = {}
-        for i = 0, rooms:size() - 1 do
-            local room = rooms:get(i)
-            local def = room:getRoomDef()
-
-            if def then
-                local building = room:getBuilding()
-                local buildingDef = building:getDef()
-                
-                if not BWOBuildings.IsEventBuilding(building, "home") then
-                    
-                    if def:getZ() >=0 and math.abs(def:getX() - player:getX()) < 100 and math.abs(def:getX2() - player:getX()) < 100 and 
-                    math.abs(def:getY() - player:getY()) < 100 and math.abs(def:getY2() - player:getY()) < 100 then
-
-                        local roomSize = BWORooms.GetRoomSize(room)
-                        local popMod = 1 -- lags: BWORooms.GetRoomPopMod(room)
-                        if popMod > 0 then
-                            local cursorStart = cursor
-                            cursor = cursor + math.floor(roomSize ^ 1.2)
-
-
-                            local roomName = room:getName()
-
-                            local occupantsCnt = BWORooms.GetRoomCurrPop(room)
-                            local occupantsMax = BWORooms.GetRoomMaxPop(room)
-
-                            -- table.insert(roomPool, {room=room, cursorStart=cursorStart, cursorEnd=cursor})
-
-                            table.insert(roomPool, {room=room, occupantsCnt=occupantsCnt, maxNpcSlots=occupantsMax, roomName=roomName})
-
-
-                        end
-
-                    end
-                    
-                end
-                
-            end
-        end
-
-
-        for k, v in pairs(roomPool) do
-            print("Key:", k, "Value of v.maxNpcSlots: ", v.maxNpcSlots)
-        end
-
-        
-
-
-        local sumAllMaxSlots = 0
-
-        local num1 = 0
-
-        if not hutsCsv[keyId] then
-
-            savedKeyId = keyId
-
-            hutsCsv[keyId] = {totZombiesLeft=0, npcSlots={}, roomsTab={}, maxNpcSlots=0}
-
-            -- table.insert(hutsCsv[keyId], {})
-
-            for i = 1, (#roomPool) do
-
-                player:Say("roomPool[i].maxNpcSlots for room named " .. tostring(roomPool[i].roomName) .. " is " .. tostring(roomPool[i].maxNpcSlots))
-
-                num1 = 0
-
-                if tonumber(roomPool[i].maxNpcSlots) ~= nil then
-                    num1 = tonumber(roomPool[i].maxNpcSlots)
-                end
-
-                if tonumber(hutsCsv[keyId].maxNpcSlots) == nil then
-                    hutsCsv[keyId].maxNpcSlots = 0
-                end
-
-                hutsCsv[keyId].maxNpcSlots = tonumber(hutsCsv[keyId].maxNpcSlots) + num1
-
-                table.insert(hutsCsv[keyId].roomsTab, {roomName=tostring(roomPool[i].roomName), maxNpcSlots=tonumber(roomPool[i].maxNpcSlots), npcSlots={}})
-
-            end
-
-            player:Say("sum ALL maxNpcSlots for ALL rooms in building: " .. tostring(hutsCsv[keyId].maxNpcSlots))
-            hutsCsv[keyId].maxNpcSlots = hutsCsv[keyId].maxNpcSlots
-
-            hutsCsv[keyId].totMinutesAtFirstSeen = math.abs((getGameTime():getMinutes() + (getGameTime():getHour() * 60) + (getGameTime():getDay() * 60 * 24)))
-
-            -- math.abs((getGameTime():getMinutes() + (getGameTime():getHour() * 60) + (getGameTime():getDay() * 60 * 24)) - R69_LAST_SPAWNED_TOT_MINUTES) < 10 
-
-            hutsCsv[keyId].totMinutesWhenLastSeen = math.abs((getGameTime():getMinutes() + (getGameTime():getHour() * 60) + (getGameTime():getDay() * 60 * 24)))
-
-            hutsCsv[keyId].dayLastSeen = getGameTime():getDay()
-
-            ------------------------------------------ +
-
-            local fakeZombie = getCell():getFakeZombieForHit()
-            local zombieList = BanditZombie.GetAllZ()
-            local gmd = GetBanditModData()
-
-            local ccnt = 0
-            for k, v in pairs(gmd.Queue) do
-                ccnt = ccnt + 1
-            end
-
-            local cnt = 0
-
-            for id, z in pairs(zombieList) do
-
-            end
-
-            ------------------------------------------ +
-
-        end
-
-    end
 
     local player = getSpecificPlayer(0)
     if not player then return end
@@ -230,14 +72,12 @@ local function saveHutNow()
     local roomName
     local building
 
-
     for i = 0, zombieList:size() - 1 do
         local zombie = zombieList:get(i)
         bx = zombie:getX()
         by = zombie:getY()
 
         bz = math.floor(zombie:getZ())
-
 
 
         dist = BanditUtils.DistTo(px, py, bx, by)
@@ -265,66 +105,514 @@ local function saveHutNow()
 
             end
             
-            
+                        
             local foundZedId = false
+            local toRemove = {}
 
-            for j = 1, (#zedsHere) do
-                if tonumber(zedsHere[j]) == tonumber(zombie.id) then
-                    foundZedId = true
+            local count = 0
+
+            for k, v in pairs(zedsHere) do
+                count = count + 1
+
+                if BanditZombie.GetInstanceById(tonumber(k)) == nil and count > 300 then
+                    table.insert(toRemove, k)
                     break
                 end
             end
 
-            local despawnThem = false
-            
-            local zombie = BanditZombie.GetInstanceById(zombie.id)
-            -- local id = BanditUtils.GetCharacterID(zombie)
-            if zombie and zombie:isAlive() and foundZedId == false then
-                -- fixme: zombie:canBeDeletedUnnoticed(float)
+            for i = 1, #toRemove do
+                zedsHere[toRemove[i]] = nil
+            end
 
-                if tonumber(keyId) == tonumber(savedKeyId) then
 
-                    despawnThem = true
+            for k, v in pairs(zedsHere) do
+                -- print("Key:", k, "Value of v.maxNpcSlots: ", v.maxNpcSlots)
 
-                else
+                -- if tonumber(v.maxNpcSlots) 
 
-                    if not hutsCsv[keyId] then
-                        
-                    else
-
-                        if math.abs((hutsCsv[keyId].totMinutesAtFirstSeen) - (getGameTime():getMinutes() + (getGameTime():getHour() * 60) + (getGameTime():getDay() * 60 * 24))) <= 3 then
-                            
-                            despawnThem = true
-
-                        end
-                    end
-
+                if tonumber(k) == tonumber(zombie.id) then
+                    foundZedId = true
+                    break
                 end
-
-                if despawnThem == true then
-                    
-    
-                    zombie:removeFromSquare()
-                    zombie:removeFromWorld()
-                    args = {}
-                    
-                    args.id = zombie.id
-
-                    sendClientCommand(player, 'Commands', 'BanditRemove', args)
-
-                    cnt = cnt + 1
-
-                    hutsCsv[keyId].totZombiesLeft = hutsCsv[keyId].totZombiesLeft + 1
-
-                end
-                
 
             end
 
+            local despawnThem = false
+            local zombie = BanditZombie.GetInstanceById(zombie.id)
+
+            local id = BanditUtils.GetCharacterID(zombie)
+
+            if zombie then
+                if zombie:isAlive() and foundZedId == false then
+                    -- fixme: zombie:canBeDeletedUnnoticed(float)
+
+                    if tonumber(keyId) == tonumber(savedKeyId) then
+                        despawnThem = true
+                    else
+
+                        if not hutsCsv[keyId] then
+                            
+                        else
+
+                            if math.abs((hutsCsv[keyId].totMinutesAtFirstSeen) - (getGameTime():getMinutes() + (getGameTime():getHour() * 60) + (getGameTime():getDay() * 60 * 24))) <= 3 then
+                                
+                                despawnThem = true
+
+                            end
+                        end
+
+                    end
+
+                    if despawnThem == true then
+        
+                        zombie:removeFromSquare()
+                        zombie:removeFromWorld()
+                        args = {}
+                        
+                        args.id = zombie.id
+
+                        sendClientCommand(player, 'Commands', 'BanditRemove', args)
+
+                        cnt = cnt + 1
+
+                        hutsCsv[keyId].totZombiesLeft = hutsCsv[keyId].totZombiesLeft + 1
+
+                    end
+                    
+
+                end
+                
+            end
 
         end
 
     end
+
+
+end
+
+
+
+local function dripSpawnZs4Huts(keyId_in)
+
+    -- Phase 2D — Zombie Drip Spawn: Make dripSpawnZs4Huts() slowly add those hut zombies back later, because the poof step only works if it also leads into a believable delayed return.
+
+    local keyId = keyId_in
+
+    local player = getPlayer(0)
+
+    local px = player:getX()
+    local py = player:getY()
+    local pz = math.floor(player:getZ())
+
+    local numberOfZombies = ZombRand(1, 10)
+
+    local rand1 = ZombRand(25, 45)
+    local rand2 = ZombRand(25, 45)
+
+    local hutsCsv = ModData.getOrCreate("hutsCsv")
+    local vipsCsv = ModData.getOrCreate("vipsCsv")
+
+    local zedsHere = ModData.getOrCreate("zedsHere")
+
+
+    if not hutsCsv[keyId] then
+        do return end
+    end
+
+    if hutsCsv[keyId].totZombiesLeft < 1 then
+        do return end
+    else
+        -- totMinutesAtFirstSeen=math.abs(), 
+
+        if math.abs((hutsCsv[keyId].totMinutesAtFirstSeen) - (getGameTime():getMinutes() + (getGameTime():getHour() * 60) + (getGameTime():getDay() * 60 * 24))) <= 3 then
+            do return end
+        else
+            if math.abs((hutsCsv[keyId].totMinutesAtFirstSeen) - (getGameTime():getMinutes() + (getGameTime():getHour() * 60) + (getGameTime():getDay() * 60 * 24))) <= 60 or math.abs(hutsCsv[keyId].dayLastSeen - getGameTime():getDay()) >= 2 then
+
+                if math.abs(hutsCsv[keyId].dayLastSeen - getGameTime():getDay()) >= 2 then
+
+                    numberOfZombies = ZombRand(7, 14)
+
+                    if getGameTime():getDay() > 20 then
+                        numberOfZombies = ZombRand(7, 20)
+                    else
+                        if getGameTime():getDay() >= 14 then
+                            numberOfZombies = ZombRand(7, (getGameTime():getDay()))
+                        end
+                    end
+
+                    local bonusZeds = math.abs(hutsCsv[keyId].dayLastSeen - getGameTime():getDay())
+
+                    if bonusZeds > 20 then
+                        bonusZeds = 20
+                    end
+
+                    if bonusZeds > 2 then
+                        numberOfZombies = numberOfZombies + ZombRand(1, bonusZeds)
+                    end
+
+                    hutsCsv[keyId].dayLastSeen = getGameTime():getDay()
+
+                    -- SINGLE large-ish burst/clump spawns nearby
+
+                    rand1 = ZombRand(35, 49)
+                    rand2 = ZombRand(35, 49)
+
+                    if ZombRand(1, 100) > 50 then
+
+                        -- ...or THIS triggers and no zombie clump spawns in at this point:
+
+                        do return end
+                    end
+
+                    
+
+                end
+
+            end
+        end
+
+    end
+
+
+
+
+
+
+
+    
+
+
+
+    local maleOutfits = { "Chef", "Redneck", "Hunter", "Camper", "MallSecurity", "Cook_Generic", "BWOFormal", "Young", "John", "Priest", "Dean", "Thug", "Party", "OfficeWorker", "Classy", "Young", "BWOYoung", "BWOCow", "BWOLeather", "Generic01", "Generic02", "Generic03", "Generic04", "Generic05", "Student", "Teacher", "Farmer", "Biker", "Punk", "Rocker", "Fireman", "Fossoil", "Gas2Go", "GigaMart_Employee", "Pharmacist", "ShellSuit_Black", "ShellSuit_Black", "ShellSuit_Blue", "ShellSuit_Green", "ShellSuit_Pink", "ShellSuit_Teal", "SportsFan", "Varsity", "StreetSports", "Waiter_Spiffo", "Spiffo" }
+
+    local femaleOutfits = { "OfficeWorkerSkirt", "Cook_Generic", "Party", "DressShort", "BWORainGeneric02", "BWORainGeneric01", "Generic01", "Generic02", "Generic03", "Generic04", "Generic05", "Student", "Teacher", "BWOYoung", "BWOCow", "BWOLeather", "", "DressNormal", "DressShort", "Classy", "Young", "Biker", "Punk", "Rocker", "Fireman", "Fossoil", "Gas2Go", "GigaMart_Employee", "Pharmacist", "ShellSuit_Black", "ShellSuit_Black", "ShellSuit_Blue", "ShellSuit_Green", "ShellSuit_Pink", "ShellSuit_Teal", "SportsFan", "Varsity", "StreetSports", "Bandit", "Waiter_Classy", "Waiter_Spiffo", "Waiter_Diner", "Waiter_Restaurant", "Spiffo", "Farmer" }
+
+
+    if getGameTime():getDay() >= 16 then
+               
+
+        maleOutfits = {"AmbulanceDriver", "Pharmacist", "Nurse", "Doctor", "Bandit", "ZSPoliceSpecialOps", "PoliceState", "PoliceRiot", "BWOYoung", "Police", "BWOCow", "BWOLeather", "Generic01", "Generic02", "Generic03", "Generic04", "Generic05", "Chef", "Redneck", "Hunter", "Camper", "MallSecurity", "Cook_Generic", "BWOFormal", "Young", "John", "Priest", "Dean", "Thug", "Party", "OfficeWorker", "Classy", "Young", "BWOYoung", "BWOCow", "BWOLeather", "Generic01", "Generic02", "Generic03", "Generic04", "Generic05", "Student", "Teacher", "Farmer", "Biker", "Punk", "Rocker", "Fireman", "Fossoil", "Gas2Go", "Bandit", "Pharmacist", "SportsFan", "Varsity", "StreetSports", "Waiter_Spiffo", "Spiffo", "Young", "BWOYoung", "BWOCow", "BWOLeather", "Generic01", "Generic02", "Generic03", "Generic04", "Generic05", "Chef", "Redneck", "Hunter", "Camper", "Bandit", "Cook_Generic", "BWOFormal", "Young", "John", "Priest", "Dean", "Thug", "Party", "OfficeWorker", "Classy", "Young", "BWOYoung", "BWOCow", "BWOLeather", "Generic01", "Generic02", "Generic03", "Generic04", "Generic05", "Student", "Teacher", "Farmer", "Biker", "Punk", "Rocker", "Fireman", "Fossoil", "Bandit", "GigaMart_Employee", "Pharmacist", "SportsFan", "Varsity", "StreetSports", "Waiter_Spiffo", "Spiffo", "Young", "BWOYoung", "BWOCow", "BWOLeather", "Generic01", "Generic02", "Generic03", "Generic04", "Generic05", "ShellSuit_Black", "ShellSuit_Black", "ShellSuit_Blue", "ShellSuit_Green", "ShellSuit_Pink", "ShellSuit_Teal", "Security"}
+        
+        femaleOutfits = {"Pharmacist", "Nurse", "Doctor", "Bandit", "Police", "Generic01",  "Generic02", "Generic03", "Generic04", "Generic05", "BWOYoung", "BWOCow", "BWOLeather", "SportsFan", "Varsity", "StreetSports", "Bandit", "Waiter_Classy", "Waiter_Spiffo", "Waiter_Diner", "Waiter_Restaurant", "Spiffo", "OfficeWorkerSkirt", "Cook_Generic", "Party", "DressShort", "BWORainGeneric02", "BWORainGeneric01", "Generic01", "Generic02", "Generic03", "Generic04", "Generic05", "Student", "Teacher", "BWOYoung", "BWOCow", "BWOLeather", "Joan", "DressNormal", "DressShort", "Classy", "Young", "Biker", "Punk", "Rocker", "Fireman", "Bandit", "Gas2Go", "Bandit", "Pharmacist", "SportsFan", "Varsity", "StreetSports", "Bandit", "Waiter_Classy", "Waiter_Spiffo", "Waiter_Diner", "Waiter_Restaurant", "Spiffo", "OfficeWorkerSkirt", "Cook_Generic", "Party", "DressShort", "BWORainGeneric02", "BWORainGeneric01", "Generic01", "Generic02", "Generic03", "Generic04", "Generic05", "Student", "Teacher", "BWOYoung", "BWOCow", "BWOLeather", "Joan", "DressNormal", "DressShort", "Classy", "Young", "Biker", "Punk", "Rocker", "Fireman", "Fossoil", "Bandit", "GigaMart_Employee", "Pharmacist", "Farmer", "ShellSuit_Black", "ShellSuit_Black", "ShellSuit_Blue", "ShellSuit_Green", "ShellSuit_Pink", "ShellSuit_Teal" }
+        
+    end
+
+
+    if ZombRand(1, 100) > 50 then
+
+        if math.abs((hutsCsv[keyId].totMinutesAtFirstSeen) - (getGameTime():getMinutes() + (getGameTime():getHour() * 60) + (getGameTime():getDay() * 60 * 24))) <= 10 or math.abs((hutsCsv[keyId].totMinutesAtFirstSeen) - (getGameTime():getMinutes() + (getGameTime():getHour() * 60) + (getGameTime():getDay() * 60 * 24))) >= 50 then
+            numberOfZombies = math.ceil(numberOfZombies / 4)
+        else
+
+            if math.abs((hutsCsv[keyId].totMinutesAtFirstSeen) - (getGameTime():getMinutes() + (getGameTime():getHour() * 60) + (getGameTime():getDay() * 60 * 24))) <= 15 or math.abs((hutsCsv[keyId].totMinutesAtFirstSeen) - (getGameTime():getMinutes() + (getGameTime():getHour() * 60) + (getGameTime():getDay() * 60 * 24))) >= 45 then
+                numberOfZombies = math.ceil(numberOfZombies / 3)
+            else
+
+                if math.abs((hutsCsv[keyId].totMinutesAtFirstSeen) - (getGameTime():getMinutes() + (getGameTime():getHour() * 60) + (getGameTime():getDay() * 60 * 24))) <= 20 or math.abs((hutsCsv[keyId].totMinutesAtFirstSeen) - (getGameTime():getMinutes() + (getGameTime():getHour() * 60) + (getGameTime():getDay() * 60 * 24))) >= 40 then
+                    numberOfZombies = math.ceil(numberOfZombies / 2)
+                end
+
+            end
+
+        end
+
+    end
+
+
+
+    if math.abs((hutsCsv[keyId].totMinutesAtFirstSeen) - (getGameTime():getMinutes() + (getGameTime():getHour() * 60) + (getGameTime():getDay() * 60 * 24))) <= 5 or math.abs((hutsCsv[keyId].totMinutesAtFirstSeen) - (getGameTime():getMinutes() + (getGameTime():getHour() * 60) + (getGameTime():getDay() * 60 * 24))) >= 55 then
+
+        numberOfZombies = math.ceil(numberOfZombies / 4)
+
+        if numberOfZombies > 3 then
+            numberOfZombies = ZombRand(1, 3)
+        end
+
+    end
+
+
+
+    unisexOutfitsMiniTab = {"Generic01", "Generic02", "Generic03", "Generic04", "Generic05"}
+
+    text = tostring(unisexOutfitsMiniTab[ZombRand(1, (#unisexOutfitsMiniTab))])
+
+    local femaleChanceHere = 50
+
+    if ZombRand(1, 100) > 80 then
+        numberOfZombies = 1
+        
+        if ZombRand(1, 100) > 50 then
+
+            femaleChanceHere = 0
+            text = tostring(maleOutfits[ZombRand(1, (#maleOutfits))])
+
+        else
+            femaleChanceHere = 100
+            text = tostring(femaleOutfits[ZombRand(1, (#femaleOutfits))])
+
+        end
+    end
+
+    if ZombRand(1, 1000) > 500 then
+        rand2 = (-1) * (rand2)
+    end
+    if ZombRand(1, 1000) > 500 then
+        rand1 = (-1) * (rand1)
+    end
+    
+    addZombiesInOutfit(px + rand1, py + rand1, 0, numberOfZombies, text, femaleChanceHere)
+
+    hutsCsv[keyId].totZombiesLeft = hutsCsv[keyId].totZombiesLeft - numberOfZombies
+
+
+    if hutsCsv[keyId].totZombiesLeft < 0 then
+        hutsCsv[keyId].totZombiesLeft = 0
+    end
+
+
+end
+
+
+
+local function prePoofZs()
+
+    -- hutsCsv[keyId] = {totZombiesLeft=0, npcSlots={}, roomsTab={}, maxNpcSlots=0}
+
+
+    local hutsCsv = ModData.getOrCreate("hutsCsv")
+    local vipsCsv = ModData.getOrCreate("vipsCsv")
+
+    local zedsHere = ModData.getOrCreate("zedsHere")
+
+    local keyId
+
+
+
+    for k, v in pairs(hutsCsv) do
+        -- print("Key:", k, "Value of v.maxNpcSlots: ", v.maxNpcSlots)
+
+        keyId = tonumber(k)
+
+        if math.abs(tonumber(v.totMinutesAtFirstSeen) - (getGameTime():getMinutes() + (getGameTime():getHour() * 60) + (getGameTime():getDay() * 60 * 24))) <= 3 then
+            
+            -- call our zed DE-spawner function now for this particular building keyId for the first few minutes after stepping in the door:
+
+            poofNewHutZs(keyId)
+
+
+        else
+
+            -- call our zed slow drip spawner function now for this particular building keyId for the remaining hour past the first few minutes after stepping in the door:
+
+            if math.abs(tonumber(v.totMinutesAtFirstSeen) - (getGameTime():getMinutes() + (getGameTime():getHour() * 60) + (getGameTime():getDay() * 60 * 24))) <= 60 then
+                dripSpawnZs4Huts(keyId)
+            end
+
+        end
+    end
+
+
+end
+
+
+
+local function saveHutNow()
+
+
+    -- Phase 2A — Building Registration: 
+        -- Make saveHutNow() 
+        -- create/update hutsCsv[keyId] cleanly, because every later zombie and NPC step depends on hut data existing and being trustworthy.
+
+
+    -- No that's not right, I'm 99% sure it's THIS that we used (pretty sure it worked real well) -- can you remind me what this would end up displaying ... I'm worried maybe this will only print out a handful of buildings on the map though, do I need to specify something broader or this all of them: 
+
+    local hutsCsv = ModData.getOrCreate("hutsCsv")
+    local vipsCsv = ModData.getOrCreate("vipsCsv")
+
+    local zedsHere = ModData.getOrCreate("zedsHere")
+
+    for k, v in pairs(hutsCsv) do
+        print("Key:", k, "Value:", v)
+    end
+
+    -- local savedKeyId = nil
+
+    local player = getPlayer(0)
+
+    local buildingDef
+    local keyId
+
+    local foundHut = false
+
+    local building = player:getBuilding()
+
+    if building then
+        buildingDef = building:getDef()
+        keyId = buildingDef:getKeyId()
+
+        savedKeyId = buildingDef:getKeyId()
+
+        for j = 1, (#last10HutIds) do
+            if tonumber(keyId) == tonumber(last10HutIds[j]) then
+                foundHut = true
+                break
+            end
+        end
+
+        if foundHut == false then
+            table.insert(last10HutIds, keyId)
+        end
+
+        --------------------------------------------
+
+        local ts = getTimestampMs()
+
+        local player = getSpecificPlayer(0)
+        local cell = player:getCell()
+        local px, py = player:getX(), player:getY()
+        local rooms = cell:getRoomList()
+
+        local occupantsCnt
+        local occupantsMax
+        local foundHut = false
+
+        -- the probability of spawn in a room will depend on room size and other factors
+
+        local roomPool = {}
+
+        building = player:getBuilding()
+
+        if building then
+            buildingDef = building:getDef()
+            keyId = buildingDef:getKeyId()
+
+            savedKeyId = buildingDef:getKeyId()
+
+        end
+
+        for i = 0, rooms:size() - 1 do
+            local room = rooms:get(i)
+            local def = room:getRoomDef()
+
+            if def then
+
+                building = room:getBuilding()
+                buildingDef = building:getDef()
+
+                keyId = buildingDef:getKeyId()
+
+                if tonumber(keyId) == tonumber(savedKeyId) then
+    
+                    if not BWOBuildings.IsEventBuilding(building, "home") then
+                        
+                        if def:getZ() >=0 and math.abs(def:getX() - player:getX()) < 50 and math.abs(def:getX2() - player:getX()) < 50 and 
+                        math.abs(def:getY() - player:getY()) < 50 and math.abs(def:getY2() - player:getY()) < 50 then
+
+                            local roomSize = BWORooms.GetRoomSize(room)
+
+                            if 1 + 1 == 2 then
+
+                                local roomName = room:getName()
+
+                                local occupantsCnt = BWORooms.GetRoomCurrPop(room)
+                                local occupantsMax = BWORooms.GetRoomMaxPop(room)
+
+
+                                table.insert(roomPool, {room=room, occupantsCnt=occupantsCnt, maxNpcSlots=occupantsMax, roomName=roomName})
+
+
+                            end
+
+                        end
+                        
+                    end
+                end
+            end
+        end
+
+
+        for k, v in pairs(roomPool) do
+            print("Key:", k, "Value of v.maxNpcSlots: ", v.maxNpcSlots)
+        end
+
+        if not hutsCsv[keyId] then
+
+            savedKeyId = keyId
+
+            hutsCsv[keyId] = {
+                totZombiesLeft=0, 
+                npcSlots={}, 
+                roomsTab={}, 
+                maxNpcSlots=0, 
+                totMinutesAtFirstSeen=math.abs((getGameTime():getMinutes() + (getGameTime():getHour() * 60) + (getGameTime():getDay() * 60 * 24))), 
+                totMinutesWhenLastSeen=math.abs((getGameTime():getMinutes() + (getGameTime():getHour() * 60) + (getGameTime():getDay() * 60 * 24))),
+                dayLastSeen=getGameTime():getDay()
+            }
+
+            -- table.insert(hutsCsv[keyId], {})
+
+            for i = 1, (#roomPool) do
+
+                player:Say("roomPool[i].maxNpcSlots for room named " .. tostring(roomPool[i].roomName) .. " is " .. tostring(roomPool[i].maxNpcSlots))
+
+                print(" ================================================= ")
+                print("roomPool[i].maxNpcSlots for room named " .. tostring(roomPool[i].roomName) .. " is " .. tostring(roomPool[i].maxNpcSlots))
+                print(" ================================================= ")
+
+
+                if tonumber(hutsCsv[keyId].maxNpcSlots) == nil then
+                    hutsCsv[keyId].maxNpcSlots = 0
+                end
+
+                -- totMinutesAtFirstSeen
+                if tonumber(roomPool[i].maxNpcSlots) ~= nil then
+                    hutsCsv[keyId].maxNpcSlots = tonumber(hutsCsv[keyId].maxNpcSlots) + tonumber(roomPool[i].maxNpcSlots)
+                else
+                    hutsCsv[keyId].maxNpcSlots = tonumber(hutsCsv[keyId].maxNpcSlots) + 0
+                end
+
+
+                table.insert(hutsCsv[keyId].roomsTab, {roomName=tostring(roomPool[i].roomName), maxNpcSlots=tonumber(roomPool[i].maxNpcSlots), npcSlots={}})
+
+            end
+
+            player:Say("sum ALL maxNpcSlots for ALL rooms in building: " .. tostring(hutsCsv[keyId].maxNpcSlots))
+
+            -- hutsCsv[keyId].maxNpcSlots = hutsCsv[keyId].maxNpcSlots
+
+            -- hutsCsv[keyId].totMinutesAtFirstSeen = math.abs((getGameTime():getMinutes() + (getGameTime():getHour() * 60) + (getGameTime():getDay() * 60 * 24)))
+
+            -- math.abs((getGameTime():getMinutes() + (getGameTime():getHour() * 60) + (getGameTime():getDay() * 60 * 24)) - R69_LAST_SPAWNED_TOT_MINUTES) < 10 
+
+            -- hutsCsv[keyId].totMinutesWhenLastSeen = math.abs((getGameTime():getMinutes() + (getGameTime():getHour() * 60) + (getGameTime():getDay() * 60 * 24)))
+
+            -- hutsCsv[keyId].dayLastSeen = getGameTime():getDay()
+
+            ------------------------------------------ +
+
+            local fakeZombie = getCell():getFakeZombieForHit()
+            local zombieList = BanditZombie.GetAllZ()
+            local gmd = GetBanditModData()
+
+            local ccnt = 0
+            for k, v in pairs(gmd.Queue) do
+                ccnt = ccnt + 1
+            end
+
+            local cnt = 0
+
+            for id, z in pairs(zombieList) do
+
+            end
+
+            ------------------------------------------ +
+
+        end
+
+    end
+
     
 
 
@@ -336,24 +624,29 @@ local function saveHutNow()
     local gmd = GetBWOModData() 
     for k, v in pairs(gmd.EventBuildings) do 
 
-        print("ID:", k) 
+        -- print("ID:", k) 
 
         for key, val in pairs(v) do
-            print(" ", key, val)
+            -- print(" ", key, val)
         end
 
     end
 
     -- ..........also, when we use that what's it giving us; is this a Bandits Week One only kind of construction?
 
-
 end
 
--- Phase 2B — Zombie Tracking: Build zedsHere as the minimal way to tell “already around” zombies apart from “just popped from this new hut” zombies, and keep it dumb unless forced to get fancier later.
 
--- Phase 2C — New-Building Zombie Poof: Make poofNewHutZs() despawn only the fresh inside-hut zombies during the first short window and feed part of them into totZombiesLeft, because this is the first real anti-stupid-spawn step.
 
--- Phase 2D — Zombie Drip Spawn: Make dripSpawnZs4Huts() slowly add those hut zombies back later, because the poof step only works if it also leads into a believable delayed return.
+
+
+
+
+
+
+
+
+
 
 -- Phase 2E — Dev Read/Write Helpers: Port the csv/txt helper junk early enough that you can force data in and out while staying in-game, because that gives you a clean way to test broken links without wrestling the full chain every time.
 
@@ -464,7 +757,7 @@ Events.OnKeyPressed.Add(onPress)
 local onTickZZB = function(numTicksInZZB)
 
     if numTicksInZZB % 2 == 0 or numTicksInZZB % 2 ~= 0 then
-
+        prePoofZs()
     end
 
     if numTicksInZZB % 20 == 0 then

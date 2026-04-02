@@ -1,10 +1,10 @@
-name=Bandits Week One - Smoother N Snappier Week One Spawning Fix
+name=Bandits Week One - Smoother N Snappier Week One Fix
 id=KeepBanditsWeekOneSnappy
 poster=poster.png
 icon=icon.png
 author=TheLurkiest
 modversion=1.0
-description=Upgrades NPC interactions for Legacy B41 Bandits to allow player to play a burger flipper or chef in a more interactive role.
+description=alters the existing system of spawning and de-spawning of zombies and NPCs to ensure better use of limited hardware and fewer issues like lag or NPC's not rendering properly in crowded areas... designed specifically for anyone playing Bandits Week One that's still using an older PC (like myself).
 keybinding = Less Impressed NPCs Mod: Keyboard.KEY_NUMPADCOMMA
 keybinding = Less Impressed NPCs Mod: Keyboard.KEY_3
 keybinding = Less Impressed NPCs Mod: Keyboard.KEY_7
