@@ -28,32 +28,14 @@ local function saveHutNow()
 
     -- No that's not right, I'm 99% sure it's THIS that we used (pretty sure it worked real well) -- can you remind me what this would end up displaying ... I'm worried maybe this will only print out a handful of buildings on the map though, do I need to specify something broader or this all of them: 
 
-
-
-
-    
     local hutsCsv = ModData.getOrCreate("hutsCsv")
     local vipsCsv = ModData.getOrCreate("vipsCsv")
 
     local zedsHere = ModData.getOrCreate("zedsHere")
 
-
-
-    -- 
-
-    print("#hutsCsv is " .. tostring(#hutsCsv))
-    -- hutsCsv[keyId]
-
-    -- for k, v in #hutsCsv do
-        
-    --     print("k is " .. tostring(k) .. "and v is " .. tostring(v))
-    -- end
-
     for k, v in pairs(hutsCsv) do
         print("Key:", k, "Value:", v)
     end
-
-    print("hutsCsv:size() is " .. tostring(hutsCsv:size()))
 
     local savedKeyId = nil
 
@@ -63,15 +45,15 @@ local function saveHutNow()
     local buildingDef
     local keyId
 
+    local foundHut = false
+
     if building then
         buildingDef = building:getDef()
         keyId = buildingDef:getKeyId()
 
-        local foundHut = false
 
         for j = 1, (#last10HutIds) do
             if tonumber(keyId) == tonumber(last10HutIds[j]) then
-                
                 foundHut = true
                 break
             end
@@ -86,14 +68,6 @@ local function saveHutNow()
         
 
         local ts = getTimestampMs()
-
-        local event = {}
-        event.hostile = false
-        event.occured = false
-        event.program = {}
-        event.program.name = "Inhabitant"
-        event.program.stage = "Prepare"
-        
 
         local player = getSpecificPlayer(0)
         local cell = player:getCell()
@@ -147,8 +121,16 @@ local function saveHutNow()
         end
 
 
+        for k, v in pairs(roomPool) do
+            print("Key:", k, "Value of v.maxNpcSlots: ", v.maxNpcSlots)
+        end
+
+        
+
+
         local sumAllMaxSlots = 0
 
+        local num1 = 0
 
         if not hutsCsv[keyId] then
 
@@ -156,29 +138,13 @@ local function saveHutNow()
 
             hutsCsv[keyId] = {totZombiesLeft=0, npcSlots={}, roomsTab={}, maxNpcSlots=0}
 
-            table.insert(hutsCsv[keyId], {})
-
-            -- table.insert(hutsCsv[keyId], )
-
-            -- npcIdsTab={}
-
-            -- hutsCsv[keyId].totZombiesLeft = 0
-            -- hutsCsv[keyId].npcSlots = {}
-            -- hutsCsv[keyId].roomsTab = {}
-
-
-
+            -- table.insert(hutsCsv[keyId], {})
 
             for i = 1, (#roomPool) do
 
                 player:Say("roomPool[i].maxNpcSlots for room named " .. tostring(roomPool[i].roomName) .. " is " .. tostring(roomPool[i].maxNpcSlots))
 
-            
-
-                local num1 = 0
-
-                local num2 = 0
-
+                num1 = 0
 
                 if tonumber(roomPool[i].maxNpcSlots) ~= nil then
                     num1 = tonumber(roomPool[i].maxNpcSlots)
@@ -205,11 +171,6 @@ local function saveHutNow()
 
             hutsCsv[keyId].dayLastSeen = getGameTime():getDay()
 
-
-
-
-
-
             ------------------------------------------ +
 
             local fakeZombie = getCell():getFakeZombieForHit()
@@ -225,24 +186,13 @@ local function saveHutNow()
 
             for id, z in pairs(zombieList) do
 
-
-
-
             end
 
-
             ------------------------------------------ +
-
-
 
         end
 
     end
-
-
-
-
-
 
     local player = getSpecificPlayer(0)
     if not player then return end
